@@ -28,9 +28,10 @@ const (
 
 // Bot represents the Discord bot.
 type Bot struct {
-	Session       *discordgo.Session
-	Router        *router.Router
-	spotifyClient *spotify.Client
+	Session           *discordgo.Session
+	Router            *router.Router
+	spotifyClient     *spotify.Client
+	inactivityMonitor *voice.Monitor
 }
 
 // New creates a new instance of the Bot.
@@ -50,6 +51,9 @@ func New(cfg *config.Config) (*Bot, error) {
 	playerService := player.New(spotifyClient, dg)
 	playerService.Start()
 
+	inactivityMonitor := voice.NewMonitor(spotifyClient, voiceManager, cfg.InactivityTimeout)
+	inactivityMonitor.Start()
+
 	r := router.New()
 	r.Register(commands.PingCommand(cfg))
 	r.Register(commands.PlayCommand(spotifyClient, voiceManager, cfg, playerService))
@@ -64,9 +68,10 @@ func New(cfg *config.Config) (*Bot, error) {
 	playerService.RegisterHandlers(r, voiceManager)
 
 	return &Bot{
-		Session:       dg,
-		Router:        r,
-		spotifyClient: spotifyClient,
+		Session:           dg,
+		Router:            r,
+		spotifyClient:     spotifyClient,
+		inactivityMonitor: inactivityMonitor,
 	}, nil
 }
 
@@ -96,6 +101,9 @@ func (b *Bot) Run() error {
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
+
+	// Stop inactivity monitor
+	b.inactivityMonitor.Stop()
 
 	// Pause Spotify playback before exiting
 	slog.Info("Shutting down, pausing Spotify playback...")

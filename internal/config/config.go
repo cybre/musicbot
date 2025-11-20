@@ -32,6 +32,9 @@ type Config struct {
 
 	// ResponseDeleteTimeout is the duration after which ephemeral bot responses are deleted.
 	ResponseDeleteTimeout time.Duration `envconfig:"RESPONSE_DELETE_TIMEOUT" default:"2m"`
+
+	// InactivityTimeout is the duration of inactivity before auto-disconnecting from voice.
+	InactivityTimeout time.Duration `envconfig:"INACTIVITY_TIMEOUT" default:"20s"`
 }
 
 // Load loads the configuration from environment variables.
