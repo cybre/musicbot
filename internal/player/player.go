@@ -149,7 +149,6 @@ func (s *Service) RegisterHandlers(r *router.Router, voiceManager *voice.Manager
 		if err := voiceManager.Leave(); err != nil {
 			slog.Error("Failed to leave voice channel", "error", err)
 		}
-		s.DeleteMessage()
 		return sess.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseDeferredMessageUpdate,
 		})

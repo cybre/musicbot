@@ -30,9 +30,6 @@ func StopCommand(spotifyClient *spotify.Client, voiceManager *voice.Manager, pla
 				return fmt.Errorf("failed to leave voice channel: %w", err)
 			}
 
-			// Delete the player widget
-			playerService.DeleteMessage()
-
 			return router.Respond(s, i, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{

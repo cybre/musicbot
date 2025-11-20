@@ -51,6 +51,8 @@ func New(cfg *config.Config) (*Bot, error) {
 	playerService := player.New(spotifyClient, dg)
 	playerService.Start()
 
+	voiceManager.OnLeave(playerService.DeleteMessage)
+
 	inactivityMonitor := voice.NewMonitor(spotifyClient, voiceManager, cfg.InactivityTimeout)
 	inactivityMonitor.Start()
 

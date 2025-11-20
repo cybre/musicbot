@@ -34,7 +34,11 @@ type Monitor struct {
 }
 
 // NewMonitor creates a new inactivity monitor.
-func NewMonitor(spotifyClient SpotifyClient, voiceManager *Manager, inactivityTimeout time.Duration) *Monitor {
+func NewMonitor(
+	spotifyClient SpotifyClient,
+	voiceManager *Manager,
+	inactivityTimeout time.Duration,
+) *Monitor {
 	return &Monitor{
 		spotifyClient:     spotifyClient,
 		voiceManager:      voiceManager,

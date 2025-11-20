@@ -35,6 +35,7 @@ type Manager struct {
 	mu        sync.Mutex
 	streaming bool
 	cancelCtx context.CancelFunc
+	onLeave   []func()
 }
 
 // New creates a new Voice Manager.
@@ -275,5 +276,14 @@ func (m *Manager) Leave() error {
 	}
 
 	m.vc = nil
+
+	for _, fn := range m.onLeave {
+		fn()
+	}
+
 	return nil
+}
+
+func (m *Manager) OnLeave(fn func()) {
+	m.onLeave = append(m.onLeave, fn)
 }
