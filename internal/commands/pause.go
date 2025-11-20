@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/cybre/discordbotv3/internal/config"
@@ -22,7 +21,7 @@ func PauseCommand(spotifyClient *spotify.Client, playerService *player.Service, 
 				return fmt.Errorf("failed to pause playback: %w", err)
 			}
 
-			playerService.ScheduleWidgetUpdate(1 * time.Second)
+			playerService.UpdateWidget()
 
 			return router.Respond(s, i, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,

@@ -30,7 +30,6 @@ type Monitor struct {
 	stopChan         chan struct{}
 	inactivityTimer  *time.Timer
 	lastPlayingState bool
-	running          bool
 }
 
 // NewMonitor creates a new inactivity monitor.
@@ -43,18 +42,17 @@ func NewMonitor(
 		spotifyClient:     spotifyClient,
 		voiceManager:      voiceManager,
 		inactivityTimeout: inactivityTimeout,
-		stopChan:          make(chan struct{}),
 	}
 }
 
 // Start begins monitoring Spotify player state for inactivity.
 func (m *Monitor) Start() {
 	m.mu.Lock()
-	if m.running {
+	if m.stopChan != nil {
 		m.mu.Unlock()
 		return
 	}
-	m.running = true
+	m.stopChan = make(chan struct{})
 	m.mu.Unlock()
 
 	go m.monitorLoop()
@@ -66,12 +64,10 @@ func (m *Monitor) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if !m.running {
-		return
+	if m.stopChan != nil {
+		close(m.stopChan)
+		m.stopChan = nil
 	}
-
-	m.running = false
-	close(m.stopChan)
 
 	if m.inactivityTimer != nil {
 		m.inactivityTimer.Stop()
@@ -168,13 +164,6 @@ func (m *Monitor) startInactivityTimer() {
 	// Create new timer
 	m.inactivityTimer = time.AfterFunc(m.inactivityTimeout, func() {
 		slog.Info("Inactivity timeout reached, disconnecting from voice")
-
-		// Pause playback
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := m.spotifyClient.Pause(ctx); err != nil {
-			slog.Error("Failed to pause Spotify on inactivity", "error", err)
-		}
 
 		if err := m.voiceManager.Leave(); err != nil {
 			slog.Error("Failed to disconnect due to inactivity", "error", err)

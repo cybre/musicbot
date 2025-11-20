@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/cybre/discordbotv3/internal/config"
@@ -120,7 +119,7 @@ func PlayCommand(spotifyClient *spotify.Client, voiceManager *voice.Manager, cfg
 				return fmt.Errorf("failed to play track: %w", err)
 			}
 
-			playerService.ScheduleWidgetUpdate(1 * time.Second)
+			playerService.UpdateWidget()
 
 			return router.Respond(s, i, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -216,7 +215,7 @@ func playContext(ctx context.Context, s *discordgo.Session, i *discordgo.Interac
 		return fmt.Errorf("failed to play %s: %w", uriType, err)
 	}
 
-	playerService.ScheduleWidgetUpdate(1 * time.Second)
+	playerService.UpdateWidget()
 
 	return router.Respond(s, i, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,

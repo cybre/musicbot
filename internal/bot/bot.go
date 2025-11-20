@@ -32,6 +32,8 @@ type Bot struct {
 	Router            *router.Router
 	spotifyClient     *spotify.Client
 	inactivityMonitor *voice.Monitor
+	voiceManager      *voice.Manager
+	playerService     *player.Service
 }
 
 // New creates a new instance of the Bot.
@@ -41,26 +43,34 @@ func New(cfg *config.Config) (*Bot, error) {
 		return nil, fmt.Errorf("error creating Discord session: %w", err)
 	}
 
+	voiceManager := voice.New(dg)
+
 	spotifyClient, err := spotify.New(context.Background(), cfg)
 	if err != nil {
 		return nil, fmt.Errorf("error creating Spotify client: %w", err)
 	}
+	voiceManager.OnLeave(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
 
-	voiceManager := voice.New(dg)
+		if err := spotifyClient.Pause(ctx); err != nil {
+			slog.Error("Failed to pause Spotify on leave", "error", err)
+		}
+	})
 
 	playerService := player.New(spotifyClient, dg)
-	playerService.Start()
-
-	voiceManager.OnLeave(playerService.DeleteMessage)
+	voiceManager.OnJoin(playerService.Start)
+	voiceManager.OnLeave(playerService.Stop)
 
 	inactivityMonitor := voice.NewMonitor(spotifyClient, voiceManager, cfg.InactivityTimeout)
-	inactivityMonitor.Start()
+	voiceManager.OnJoin(inactivityMonitor.Start)
+	voiceManager.OnLeave(inactivityMonitor.Stop)
 
 	r := router.New()
 	r.Register(commands.PingCommand(cfg))
 	r.Register(commands.PlayCommand(spotifyClient, voiceManager, cfg, playerService))
 	r.Register(commands.PauseCommand(spotifyClient, playerService, cfg))
-	r.Register(commands.StopCommand(spotifyClient, voiceManager, playerService, cfg))
+	r.Register(commands.StopCommand(voiceManager, cfg))
 	r.Register(commands.ResumeCommand(spotifyClient, playerService, cfg))
 	r.Register(commands.SeekCommand(spotifyClient, playerService, cfg))
 	r.Register(commands.NextCommand(spotifyClient, playerService, cfg))
@@ -75,6 +85,8 @@ func New(cfg *config.Config) (*Bot, error) {
 		Router:            r,
 		spotifyClient:     spotifyClient,
 		inactivityMonitor: inactivityMonitor,
+		voiceManager:      voiceManager,
+		playerService:     playerService,
 	}, nil
 }
 
@@ -105,16 +117,8 @@ func (b *Bot) Run() error {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
-	// Stop inactivity monitor
-	b.inactivityMonitor.Stop()
-
-	// Pause Spotify playback before exiting
-	slog.Info("Shutting down, pausing Spotify playback...")
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-
-	if err := b.spotifyClient.Pause(ctx); err != nil {
-		slog.Error("Failed to pause Spotify on shutdown", "error", err)
+	if err := b.voiceManager.Leave(); err != nil {
+		slog.Error("Failed to leave voice channel", "error", err)
 	}
 
 	return nil

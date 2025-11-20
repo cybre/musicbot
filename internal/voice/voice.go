@@ -35,6 +35,7 @@ type Manager struct {
 	mu        sync.Mutex
 	streaming bool
 	cancelCtx context.CancelFunc
+	onJoin    []func()
 	onLeave   []func()
 }
 
@@ -60,6 +61,11 @@ func (m *Manager) Join(guildID, channelID string) error {
 	}
 
 	m.vc = vc
+
+	for _, fn := range m.onJoin {
+		fn()
+	}
+
 	return nil
 }
 
@@ -262,6 +268,12 @@ func (m *Manager) StopStreaming() {
 
 // Leave leaves the voice channel.
 func (m *Manager) Leave() error {
+	defer func() {
+		for _, fn := range m.onLeave {
+			fn()
+		}
+	}()
+
 	m.StopStreaming()
 
 	m.mu.Lock()
@@ -277,11 +289,11 @@ func (m *Manager) Leave() error {
 
 	m.vc = nil
 
-	for _, fn := range m.onLeave {
-		fn()
-	}
-
 	return nil
+}
+
+func (m *Manager) OnJoin(fn func()) {
+	m.onJoin = append(m.onJoin, fn)
 }
 
 func (m *Manager) OnLeave(fn func()) {

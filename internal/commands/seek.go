@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/cybre/discordbotv3/internal/config"
@@ -51,7 +50,7 @@ func SeekCommand(spotifyClient *spotify.Client, playerService *player.Service, c
 				return fmt.Errorf("failed to seek: %w", err)
 			}
 
-			playerService.ScheduleWidgetUpdate(1 * time.Second)
+			playerService.UpdateWidget()
 
 			return router.Respond(s, i, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,

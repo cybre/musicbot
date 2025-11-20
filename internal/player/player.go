@@ -42,6 +42,7 @@ type Service struct {
 	widgetMessageID string
 	widgetChannelID string
 	mu              sync.Mutex
+	stopChan        chan struct{}
 }
 
 // New creates a new player service.
@@ -228,12 +229,31 @@ func (s *Service) RegisterHandlers(r *router.Router, voiceManager *voice.Manager
 
 // Start starts the polling loop.
 func (s *Service) Start() {
-	ticker := time.NewTicker(pollInterval)
-	go func() {
-		for range ticker.C {
-			s.UpdateWidget()
-		}
-	}()
+	s.mu.Lock()
+	if s.stopChan != nil {
+		s.mu.Unlock()
+		return
+	}
+	s.stopChan = make(chan struct{})
+	s.mu.Unlock()
+
+	go s.updateLoop()
+
+	slog.Info("Player started")
+}
+
+// Stop gracefully stops the update loop.
+func (s *Service) Stop() {
+	s.mu.Lock()
+	if s.stopChan != nil {
+		close(s.stopChan)
+		s.stopChan = nil
+	}
+	s.mu.Unlock()
+
+	s.DeleteMessage()
+
+	slog.Info("Player stopped")
 }
 
 // SetChannel sets the channel for the widget.
@@ -267,14 +287,6 @@ func (s *Service) DeleteMessage() {
 		s.widgetChannelID = ""
 		s.widgetMessageID = ""
 	}
-}
-
-// ScheduleWidgetUpdate schedules a widget update after a delay.
-// This is used to update the widget after Spotify API calls that may take time to propagate.
-func (s *Service) ScheduleWidgetUpdate(delay time.Duration) {
-	time.AfterFunc(delay, func() {
-		s.UpdateWidget()
-	})
 }
 
 // GetNowPlayingEmbed fetches the current state and returns the widget embed and components.
@@ -347,6 +359,20 @@ func (s *Service) UpdateWidget() {
 				s.widgetMessageID = ""
 				s.mu.Unlock()
 			}
+		}
+	}
+}
+
+func (s *Service) updateLoop() {
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.UpdateWidget()
+		case <-s.stopChan:
+			return
 		}
 	}
 }
