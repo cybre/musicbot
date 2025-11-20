@@ -61,6 +61,7 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 			spotifyauth.ScopeUserReadPlaybackState,
 			spotifyauth.ScopeUserModifyPlaybackState,
 			spotifyauth.ScopeUserReadRecentlyPlayed,
+			spotifyauth.ScopeUserModifyPlaybackState,
 		},
 	}
 
@@ -127,6 +128,22 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 	return &Client{
 		client: client,
 	}, nil
+}
+
+func (c *Client) TransferPlayback(ctx context.Context, deviceName string) error {
+	devices, err := c.client.PlayerDevices(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting devices: %w", err)
+	}
+
+	for _, device := range devices {
+		slog.Info("Found device", "name", device.Name, "id", device.ID)
+		if device.Name == deviceName {
+			return c.client.TransferPlayback(ctx, device.ID, false)
+		}
+	}
+
+	return fmt.Errorf("device %s not found", deviceName)
 }
 
 // Search searches for tracks on Spotify.

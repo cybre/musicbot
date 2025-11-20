@@ -49,6 +49,11 @@ func New(cfg *config.Config) (*Bot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating Spotify client: %w", err)
 	}
+
+	if err := spotifyClient.TransferPlayback(context.Background(), cfg.SpotifyDeviceName); err != nil {
+		return nil, fmt.Errorf("error transferring playback: %w", err)
+	}
+
 	voiceManager.OnLeave(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()

@@ -27,6 +27,9 @@ type Config struct {
 	// SpotifyCallbackPort is the local port for the OAuth callback server.
 	SpotifyCallbackPort string `envconfig:"SPOTIFY_CALLBACK_PORT" default:"6000"`
 
+	// SpotifyDeviceName is the name of the device to transfer playback to.
+	SpotifyDeviceName string `envconfig:"SPOTIFY_DEVICE_NAME" required:"true"`
+
 	// AudioInputDevice is the name of the audio input device for voice streaming.
 	AudioInputDevice string `envconfig:"AUDIO_INPUT_DEVICE" required:"true"`
 
@@ -34,7 +37,7 @@ type Config struct {
 	ResponseDeleteTimeout time.Duration `envconfig:"RESPONSE_DELETE_TIMEOUT" default:"2m"`
 
 	// InactivityTimeout is the duration of inactivity before auto-disconnecting from voice.
-	InactivityTimeout time.Duration `envconfig:"INACTIVITY_TIMEOUT" default:"5m"`
+	InactivityTimeout time.Duration `envconfig:"INACTIVITY_TIMEOUT" default:"10s"`
 }
 
 // Load loads the configuration from environment variables.
