@@ -13,7 +13,15 @@ import (
 )
 
 const (
+	// itemsPerPage is the number of items to display per page.
 	itemsPerPage = 10
+
+	// Component custom IDs for pagination controls.
+	componentStart = "queue_start"
+	componentPrev  = "queue_prev"
+	componentNext  = "queue_next"
+	componentEnd   = "queue_end"
+	componentClose = "queue_close"
 )
 
 // PaginationAction represents a pagination action type.
@@ -29,19 +37,19 @@ const (
 // QueueCommand returns the queue command definition.
 func QueueCommand(spotifyClient *spotify.Client, cfg *config.Config, r *router.Router) router.Command {
 	// Register pagination handlers
-	r.RegisterComponent("queue_start", func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	r.RegisterComponent(componentStart, func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 		return handleQueuePagination(ctx, s, i, spotifyClient, PaginationStart)
 	})
-	r.RegisterComponent("queue_prev", func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	r.RegisterComponent(componentPrev, func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 		return handleQueuePagination(ctx, s, i, spotifyClient, PaginationPrev)
 	})
-	r.RegisterComponent("queue_next", func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	r.RegisterComponent(componentNext, func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 		return handleQueuePagination(ctx, s, i, spotifyClient, PaginationNext)
 	})
-	r.RegisterComponent("queue_end", func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	r.RegisterComponent(componentEnd, func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 		return handleQueuePagination(ctx, s, i, spotifyClient, PaginationEnd)
 	})
-	r.RegisterComponent("queue_close", func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	r.RegisterComponent(componentClose, func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
 		return s.ChannelMessageDelete(i.ChannelID, i.Message.ID)
 	})
 
@@ -49,43 +57,39 @@ func QueueCommand(spotifyClient *spotify.Client, cfg *config.Config, r *router.R
 		Name:        "queue",
 		Description: "Show the current playback queue",
 		Handler: func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) error {
-			return handleShowQueue(ctx, s, i, spotifyClient, cfg)
+			queue, err := spotifyClient.GetQueue(ctx)
+			if err != nil {
+				return router.Respond(s, i, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "Failed to get queue: " + err.Error(),
+						Flags:   discordgo.MessageFlagsEphemeral,
+					},
+				}, cfg.ResponseDeleteTimeout)
+			}
+
+			if queue == nil || (len(queue.Items) == 0 && queue.CurrentlyPlaying.ID == "") {
+				return router.Respond(s, i, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "The queue is empty.",
+						Flags:   discordgo.MessageFlagsEphemeral,
+					},
+				}, cfg.ResponseDeleteTimeout)
+			}
+
+			embed := buildQueueEmbed(queue, 0)
+			components := buildPaginationComponents(0, len(queue.Items))
+
+			return router.Respond(s, i, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Embeds:     []*discordgo.MessageEmbed{embed},
+					Components: components,
+				},
+			}, cfg.ResponseDeleteTimeout)
 		},
 	}
-}
-
-func handleShowQueue(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, spotifyClient *spotify.Client, cfg *config.Config) error {
-	queue, err := spotifyClient.GetQueue(ctx)
-	if err != nil {
-		return router.Respond(s, i, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Failed to get queue: " + err.Error(),
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		}, cfg.ResponseDeleteTimeout)
-	}
-
-	if queue == nil || (len(queue.Items) == 0 && queue.CurrentlyPlaying.ID == "") {
-		return router.Respond(s, i, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "The queue is empty.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		}, cfg.ResponseDeleteTimeout)
-	}
-
-	embed := buildQueueEmbed(queue, 0)
-	components := buildPaginationComponents(0, len(queue.Items))
-
-	return router.Respond(s, i, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds:     []*discordgo.MessageEmbed{embed},
-			Components: components,
-		},
-	}, cfg.ResponseDeleteTimeout)
 }
 
 func handleQueuePagination(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, spotifyClient *spotify.Client, action PaginationAction) error {
@@ -199,7 +203,7 @@ func buildPaginationComponents(page int, totalItems int) []discordgo.MessageComp
 						Name: "⏮️",
 					},
 					Style:    discordgo.SecondaryButton,
-					CustomID: "queue_start",
+					CustomID: componentStart,
 					Disabled: page == 0,
 				},
 				discordgo.Button{
@@ -207,7 +211,7 @@ func buildPaginationComponents(page int, totalItems int) []discordgo.MessageComp
 						Name: "◀️",
 					},
 					Style:    discordgo.PrimaryButton,
-					CustomID: "queue_prev",
+					CustomID: componentPrev,
 					Disabled: page == 0,
 				},
 				discordgo.Button{
@@ -215,7 +219,7 @@ func buildPaginationComponents(page int, totalItems int) []discordgo.MessageComp
 						Name: "▶️",
 					},
 					Style:    discordgo.PrimaryButton,
-					CustomID: "queue_next",
+					CustomID: componentNext,
 					Disabled: page >= totalPages-1,
 				},
 				discordgo.Button{
@@ -223,7 +227,7 @@ func buildPaginationComponents(page int, totalItems int) []discordgo.MessageComp
 						Name: "⏭️",
 					},
 					Style:    discordgo.SecondaryButton,
-					CustomID: "queue_end",
+					CustomID: componentEnd,
 					Disabled: page >= totalPages-1,
 				},
 				discordgo.Button{
@@ -231,7 +235,7 @@ func buildPaginationComponents(page int, totalItems int) []discordgo.MessageComp
 						Name: "✖",
 					},
 					Style:    discordgo.DangerButton,
-					CustomID: "queue_close",
+					CustomID: componentClose,
 				},
 			},
 		},
