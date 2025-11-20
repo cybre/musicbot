@@ -65,6 +65,7 @@ func New(cfg *config.Config) (*Bot, error) {
 	r.Register(commands.PreviousCommand(spotifyClient, playerService, cfg))
 	r.Register(commands.NowPlayingCommand(playerService, cfg))
 	r.Register(commands.QueueCommand(spotifyClient, cfg, r))
+	r.Register(commands.VolumeCommand(spotifyClient, cfg))
 	playerService.RegisterHandlers(r, voiceManager)
 
 	return &Bot{

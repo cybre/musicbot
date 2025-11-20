@@ -147,9 +147,6 @@ func (m *Manager) StartStreaming(deviceName string) error {
 	}
 
 	if err := stream.Start(); err != nil {
-		if err := stream.Close(); err != nil {
-			slog.Error("Failed to close audio stream", "error", err)
-		}
 		if err := portaudio.Terminate(); err != nil {
 			slog.Error("Failed to terminate portaudio", "error", err)
 		}
@@ -173,13 +170,11 @@ func (m *Manager) StartStreaming(deviceName string) error {
 			m.streaming = false
 			m.cancelCtx = nil
 			m.mu.Unlock()
-		}()
-		defer func() {
+
 			if err := stream.Close(); err != nil {
 				slog.Error("Failed to close audio stream", "error", err)
 			}
-		}()
-		defer func() {
+
 			if err := portaudio.Terminate(); err != nil {
 				slog.Error("Failed to terminate portaudio", "error", err)
 			}

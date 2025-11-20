@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -35,4 +36,35 @@ func getUserVoiceChannel(s *discordgo.Session, i *discordgo.InteractionCreate) (
 // formatTrackName formats a track name with artist for display.
 func formatTrackName(trackName, artistName string) string {
 	return fmt.Sprintf("**%s** by **%s**", trackName, artistName)
+}
+
+// formatTrackNameAutocomplete formats a track name with artist for autocomplete.
+func formatTrackNameAutocomplete(trackName, artistName string) string {
+	name := fmt.Sprintf("%s - %s", trackName, artistName)
+	if len(name) > 100 {
+		return name[:100]
+	}
+	return name
+}
+
+// parseSpotifyID parses a Spotify ID or URL and returns the type and ID.
+// Supported types: track, album, playlist.
+func parseSpotifyID(input string) (uriType, id string) {
+	if strings.HasPrefix(input, "spotify:") {
+		parts := strings.Split(input, ":")
+		if len(parts) >= 3 {
+			return parts[1], parts[2]
+		}
+	}
+
+	if strings.Contains(input, "spotify.com") {
+		parts := strings.Split(input, "/")
+		if len(parts) >= 2 {
+			uriType = parts[len(parts)-2]
+			id = strings.Split(parts[len(parts)-1], "?")[0]
+			return uriType, id
+		}
+	}
+
+	return "", input
 }

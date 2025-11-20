@@ -60,18 +60,17 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 		Scopes: []string{
 			spotifyauth.ScopeUserReadPlaybackState,
 			spotifyauth.ScopeUserModifyPlaybackState,
+			spotifyauth.ScopeUserReadRecentlyPlayed,
 		},
 	}
 
 	token, err := loadToken()
 	if err != nil {
-		// Generate state string
 		state, err := generateRandomState()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate state string: %w", err)
 		}
 
-		// Create a channel to receive the auth code
 		codeChan := make(chan string)
 
 		// Start a local HTTP server to handle the callback
@@ -98,24 +97,20 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 			}
 		}()
 
-		// Print the auth URL
 		url := oauthConf.AuthCodeURL(state)
 		fmt.Printf("Please log in to Spotify by visiting the following page in your browser: \n%s\n", url)
 
 		// Wait for the code
 		code := <-codeChan
 
-		// Shutdown the server
 		if err := server.Shutdown(ctx); err != nil {
 			slog.Error("Error shutting down server", "error", err)
 		}
 
-		// Exchange code for token
 		token, err = oauthConf.Exchange(ctx, code)
 		if err != nil {
 			return nil, fmt.Errorf("error exchanging code for token: %w", err)
 		}
-		// Save the initial token
 		saveToken(token)
 	}
 
@@ -135,8 +130,8 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 }
 
 // Search searches for tracks on Spotify.
-func (c *Client) Search(ctx context.Context, query string) ([]spotify.FullTrack, error) {
-	results, err := c.client.Search(ctx, query, spotify.SearchTypeTrack, spotify.Limit(10))
+func (c *Client) Search(ctx context.Context, query string, limit int) ([]spotify.FullTrack, error) {
+	results, err := c.client.Search(ctx, query, spotify.SearchTypeTrack, spotify.Limit(limit))
 	if err != nil {
 		return nil, fmt.Errorf("error searching Spotify: %w", err)
 	}
@@ -148,10 +143,27 @@ func (c *Client) Search(ctx context.Context, query string) ([]spotify.FullTrack,
 	return results.Tracks.Tracks, nil
 }
 
+// GetRecentlyPlayed returns the user's recently played tracks.
+func (c *Client) GetRecentlyPlayed(ctx context.Context) ([]spotify.RecentlyPlayedItem, error) {
+	return c.client.PlayerRecentlyPlayed(ctx)
+}
+
 // Play plays a track on the user's active device.
 func (c *Client) Play(ctx context.Context, trackID string) error {
 	err := c.client.PlayOpt(ctx, &spotify.PlayOptions{
 		URIs: []spotify.URI{spotify.URI("spotify:track:" + trackID)},
+	})
+	if err != nil && strings.Contains(err.Error(), "No active device") {
+		return ErrNoActiveDevice
+	}
+	return err
+}
+
+// PlayContext plays a context (album, artist, playlist) on the user's active device.
+func (c *Client) PlayContext(ctx context.Context, uri string) error {
+	u := spotify.URI(uri)
+	err := c.client.PlayOpt(ctx, &spotify.PlayOptions{
+		PlaybackContext: &u,
 	})
 	if err != nil && strings.Contains(err.Error(), "No active device") {
 		return ErrNoActiveDevice
@@ -199,6 +211,21 @@ func (c *Client) GetTrack(ctx context.Context, trackID string) (*spotify.FullTra
 	return c.client.GetTrack(ctx, spotify.ID(trackID))
 }
 
+// GetArtist gets an artist by ID.
+func (c *Client) GetArtist(ctx context.Context, artistID string) (*spotify.FullArtist, error) {
+	return c.client.GetArtist(ctx, spotify.ID(artistID))
+}
+
+// GetAlbum gets an album by ID.
+func (c *Client) GetAlbum(ctx context.Context, albumID string) (*spotify.FullAlbum, error) {
+	return c.client.GetAlbum(ctx, spotify.ID(albumID))
+}
+
+// GetPlaylist gets a playlist by ID.
+func (c *Client) GetPlaylist(ctx context.Context, playlistID string) (*spotify.FullPlaylist, error) {
+	return c.client.GetPlaylist(ctx, spotify.ID(playlistID))
+}
+
 // GetQueue gets the user's current playback queue.
 func (c *Client) GetQueue(ctx context.Context) (*spotify.Queue, error) {
 	return c.client.GetQueue(ctx)
@@ -212,6 +239,23 @@ func (c *Client) Shuffle(ctx context.Context, state bool) error {
 // Repeat sets the repeat mode.
 func (c *Client) Repeat(ctx context.Context, state RepeatState) error {
 	return c.client.Repeat(ctx, string(state))
+}
+
+// SetVolume sets the volume for the user's active device.
+func (c *Client) SetVolume(ctx context.Context, volume int) error {
+	return c.client.Volume(ctx, volume)
+}
+
+// GetVolume gets the current volume for the user's active device.
+func (c *Client) GetVolume(ctx context.Context) (int, error) {
+	state, err := c.client.PlayerState(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if state == nil || state.Device.ID == "" {
+		return 0, ErrNoActiveDevice
+	}
+	return int(state.Device.Volume), nil
 }
 
 // Token implements oauth2.TokenSource and persists token updates.

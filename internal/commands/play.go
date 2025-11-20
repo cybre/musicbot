@@ -15,7 +15,10 @@ import (
 	"github.com/cybre/discordbotv3/internal/voice"
 )
 
-const optionQuery = "query"
+const (
+	optionQuery        = "query"
+	defaultSearchLimit = 10
+)
 
 // PlayCommand returns the play command definition.
 func PlayCommand(spotifyClient *spotify.Client, voiceManager *voice.Manager, cfg *config.Config, playerService *player.Service) router.Command {
@@ -65,6 +68,18 @@ func PlayCommand(spotifyClient *spotify.Client, voiceManager *voice.Manager, cfg
 				// Continue anyway to try playing on Spotify
 			}
 
+			// Check if query is a URL or URI
+			uriType, id := parseSpotifyID(trackID)
+
+			if uriType == "album" || uriType == "playlist" || uriType == "artist" {
+				return playContext(ctx, s, i, spotifyClient, playerService, cfg, uriType, id, trackID)
+			}
+
+			// If it's a track from a URL/URI, use the extracted ID
+			if uriType == "track" {
+				trackID = id
+			}
+
 			// Get track details
 			track, err := spotifyClient.GetTrack(ctx, trackID)
 			trackName := "track"
@@ -78,7 +93,6 @@ func PlayCommand(spotifyClient *spotify.Client, voiceManager *voice.Manager, cfg
 			state, err := spotifyClient.GetPlayerState(ctx)
 			if err != nil {
 				slog.Error("Failed to get player state", "error", err)
-				// Fallback to just playing if we can't get state
 			}
 
 			if state != nil && state.Playing && wasConnected {
@@ -118,26 +132,34 @@ func PlayCommand(spotifyClient *spotify.Client, voiceManager *voice.Manager, cfg
 		AutocompleteHandler: func(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
 			data := i.ApplicationCommandData()
 			query, ok := getStringOption(data, optionQuery)
+			var choices []*discordgo.ApplicationCommandOptionChoice
 			if !ok || query == "" {
-				return
-			}
-
-			tracks, err := spotifyClient.Search(ctx, query)
-			if err != nil {
-				slog.Error("Error searching Spotify", "error", err)
-				return
-			}
-
-			choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(tracks))
-			for _, track := range tracks {
-				name := fmt.Sprintf("%s - %s", track.Name, track.Artists[0].Name)
-				if len(name) > 100 {
-					name = name[:100]
+				tracks, err := spotifyClient.GetRecentlyPlayed(ctx)
+				if err != nil {
+					slog.Error("Error searching Spotify", "error", err)
+					return
 				}
-				choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
-					Name:  name,
-					Value: track.ID.String(),
-				})
+				if len(tracks) > defaultSearchLimit {
+					tracks = tracks[:defaultSearchLimit]
+				}
+				for _, track := range tracks {
+					choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+						Name:  formatTrackNameAutocomplete(track.Track.Name, track.Track.Artists[0].Name),
+						Value: track.Track.ID.String(),
+					})
+				}
+			} else {
+				tracks, err := spotifyClient.Search(ctx, query, defaultSearchLimit)
+				if err != nil {
+					slog.Error("Error searching Spotify", "error", err)
+					return
+				}
+				for _, track := range tracks {
+					choices = append(choices, &discordgo.ApplicationCommandOptionChoice{
+						Name:  formatTrackNameAutocomplete(track.Name, track.Artists[0].Name),
+						Value: track.ID.String(),
+					})
+				}
 			}
 
 			if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -150,4 +172,56 @@ func PlayCommand(spotifyClient *spotify.Client, voiceManager *voice.Manager, cfg
 			}
 		},
 	}
+}
+
+func playContext(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate, spotifyClient *spotify.Client, playerService *player.Service, cfg *config.Config, uriType, id, originalInput string) error {
+	var name string
+	switch uriType {
+	case "album":
+		album, err := spotifyClient.GetAlbum(ctx, id)
+		if err == nil {
+			name = fmt.Sprintf("album **%s**", album.Name)
+		} else {
+			name = "album"
+		}
+	case "artist":
+		artist, err := spotifyClient.GetArtist(ctx, id)
+		if err == nil {
+			name = fmt.Sprintf("artist **%s**", artist.Name)
+		} else {
+			name = "artist"
+		}
+	case "playlist":
+		playlist, err := spotifyClient.GetPlaylist(ctx, id)
+		if err == nil {
+			name = fmt.Sprintf("playlist **%s**", playlist.Name)
+		} else {
+			name = "playlist"
+		}
+	default:
+		slog.Error("Invalid uri type", "uriType", uriType)
+		name = "unknown"
+	}
+
+	if err := spotifyClient.PlayContext(ctx, originalInput); err != nil {
+		if errors.Is(err, spotify.ErrNoActiveDevice) {
+			return router.Respond(s, i, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "No active Spotify device found. Please open Spotify on a device and try again.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			}, cfg.ResponseDeleteTimeout)
+		}
+		return fmt.Errorf("failed to play %s: %w", uriType, err)
+	}
+
+	playerService.ScheduleWidgetUpdate(1 * time.Second)
+
+	return router.Respond(s, i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: fmt.Sprintf("Playing %s...", name),
+		},
+	}, cfg.ResponseDeleteTimeout)
 }

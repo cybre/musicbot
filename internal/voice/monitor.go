@@ -11,7 +11,7 @@ import (
 
 const (
 	// pollInterval is how often the monitor checks Spotify player state.
-	pollInterval = 10 * time.Second
+	pollInterval = 5 * time.Second
 )
 
 // SpotifyClient defines the interface for checking Spotify player state.
@@ -95,6 +95,7 @@ func (m *Monitor) monitorLoop() {
 func (m *Monitor) checkPlayerState() {
 	if !m.voiceManager.IsConnected() {
 		// Not connected to voice, no need to monitor
+		slog.Debug("Not connected to voice, stopping inactivity timer")
 		m.stopInactivityTimer()
 		return
 	}
@@ -122,6 +123,8 @@ func (m *Monitor) checkPlayerState() {
 	m.lastPlayingState = isPlaying
 	m.mu.Unlock()
 
+	slog.Debug("Checking player state", "isPlaying", isPlaying, "wasPlaying", wasPlaying)
+
 	if isPlaying {
 		// Playback is active, cancel any pending disconnect
 		m.stopInactivityTimer()
@@ -143,10 +146,12 @@ func (m *Monitor) startInactivityTimer() {
 	defer m.mu.Unlock()
 
 	if m.inactivityTimer != nil {
-		// Timer already running, reset it
-		m.inactivityTimer.Reset(m.inactivityTimeout)
+		// Timer already running, let it count down
+		slog.Debug("Inactivity timer already running")
 		return
 	}
+
+	slog.Info("Starting inactivity timer", "timeout", m.inactivityTimeout)
 
 	// Create new timer
 	m.inactivityTimer = time.AfterFunc(m.inactivityTimeout, func() {
@@ -163,6 +168,7 @@ func (m *Monitor) stopInactivityTimer() {
 	defer m.mu.Unlock()
 
 	if m.inactivityTimer != nil {
+		slog.Info("Stopping inactivity timer")
 		m.inactivityTimer.Stop()
 		m.inactivityTimer = nil
 	}
