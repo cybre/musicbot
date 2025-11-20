@@ -69,6 +69,37 @@ func (m *Manager) IsConnected() bool {
 	return m.vc != nil
 }
 
+// GetChannelUserCount returns the number of users in the current voice channel.
+// It excludes bots from the count.
+func (m *Manager) GetChannelUserCount() (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.vc == nil {
+		return 0, nil
+	}
+
+	guildID := m.vc.GuildID
+	channelID := m.vc.ChannelID
+
+	guild, err := m.session.State.Guild(guildID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get guild: %w", err)
+	}
+
+	count := 0
+	selfID := m.session.State.User.ID
+	for _, vs := range guild.VoiceStates {
+		if vs.ChannelID == channelID {
+			if vs.UserID != selfID {
+				count++
+			}
+		}
+	}
+
+	return count, nil
+}
+
 // StartStreaming starts streaming audio from the specified device.
 func (m *Manager) StartStreaming(deviceName string) error {
 	m.mu.Lock()

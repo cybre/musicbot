@@ -34,7 +34,7 @@ type Config struct {
 	ResponseDeleteTimeout time.Duration `envconfig:"RESPONSE_DELETE_TIMEOUT" default:"2m"`
 
 	// InactivityTimeout is the duration of inactivity before auto-disconnecting from voice.
-	InactivityTimeout time.Duration `envconfig:"INACTIVITY_TIMEOUT" default:"10m"`
+	InactivityTimeout time.Duration `envconfig:"INACTIVITY_TIMEOUT" default:"5m"`
 }
 
 // Load loads the configuration from environment variables.

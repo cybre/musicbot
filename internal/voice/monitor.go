@@ -17,6 +17,7 @@ const (
 // SpotifyClient defines the interface for checking Spotify player state.
 type SpotifyClient interface {
 	GetPlayerState(ctx context.Context) (*spotifyLib.PlayerState, error)
+	Pause(ctx context.Context) error
 }
 
 // Monitor tracks Spotify playback activity and auto-disconnects on inactivity.
@@ -123,18 +124,25 @@ func (m *Monitor) checkPlayerState() {
 	m.lastPlayingState = isPlaying
 	m.mu.Unlock()
 
-	slog.Debug("Checking player state", "isPlaying", isPlaying, "wasPlaying", wasPlaying)
+	userCount, err := m.voiceManager.GetChannelUserCount()
+	if err != nil {
+		slog.Error("Failed to get channel user count", "error", err)
+		// Assume users are present to avoid accidental disconnect
+		userCount = 1
+	}
 
-	if isPlaying {
-		// Playback is active, cancel any pending disconnect
+	slog.Debug("Checking player state", "isPlaying", isPlaying, "wasPlaying", wasPlaying, "userCount", userCount)
+
+	if isPlaying && userCount > 0 {
+		// Playback is active and users are present, cancel any pending disconnect
 		m.stopInactivityTimer()
 		if !wasPlaying {
 			slog.Debug("Playback resumed, inactivity timer cancelled")
 		}
 	} else {
-		// Playback is paused/stopped, start inactivity timer
+		// Playback is paused/stopped OR channel is empty, start inactivity timer
 		if wasPlaying {
-			slog.Debug("Playback stopped, starting inactivity timer")
+			slog.Debug("Playback stopped or channel empty, starting inactivity timer")
 		}
 		m.startInactivityTimer()
 	}
@@ -156,6 +164,14 @@ func (m *Monitor) startInactivityTimer() {
 	// Create new timer
 	m.inactivityTimer = time.AfterFunc(m.inactivityTimeout, func() {
 		slog.Info("Inactivity timeout reached, disconnecting from voice")
+
+		// Pause playback
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.spotifyClient.Pause(ctx); err != nil {
+			slog.Error("Failed to pause Spotify on inactivity", "error", err)
+		}
+
 		if err := m.voiceManager.Leave(); err != nil {
 			slog.Error("Failed to disconnect due to inactivity", "error", err)
 		}
