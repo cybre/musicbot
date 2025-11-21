@@ -61,7 +61,7 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 			spotifyauth.ScopeUserReadPlaybackState,
 			spotifyauth.ScopeUserModifyPlaybackState,
 			spotifyauth.ScopeUserReadRecentlyPlayed,
-			spotifyauth.ScopeUserModifyPlaybackState,
+			spotifyauth.ScopeStreaming,
 		},
 	}
 
@@ -139,7 +139,13 @@ func (c *Client) TransferPlayback(ctx context.Context, deviceName string) error 
 	for _, device := range devices {
 		slog.Info("Found device", "name", device.Name, "id", device.ID)
 		if device.Name == deviceName {
-			return c.client.TransferPlayback(ctx, device.ID, false)
+			slog.Info("Transferring playback to device", "name", device.Name, "id", device.ID)
+			if err := c.client.TransferPlayback(ctx, device.ID, false); err != nil {
+				return err
+			}
+			if err := c.client.Pause(ctx); err != nil {
+				slog.Error("failed to pause playback after transfering device", "error", err)
+			}
 		}
 	}
 
