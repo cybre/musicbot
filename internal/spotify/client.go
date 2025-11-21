@@ -140,12 +140,15 @@ func (c *Client) TransferPlayback(ctx context.Context, deviceName string) error 
 		slog.Info("Found device", "name", device.Name, "id", device.ID)
 		if device.Name == deviceName {
 			slog.Info("Transferring playback to device", "name", device.Name, "id", device.ID)
+
 			if err := c.client.TransferPlayback(ctx, device.ID, false); err != nil {
 				return err
 			}
 			if err := c.client.Pause(ctx); err != nil {
 				slog.Error("failed to pause playback after transfering device", "error", err)
 			}
+
+			return nil
 		}
 	}
 
