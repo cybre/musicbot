@@ -67,6 +67,16 @@ func PlayCommand(spotifyClient *spotify.Client, voiceManager *voice.Manager, cfg
 				// Continue anyway to try playing on Spotify
 			}
 
+			activeDevice, err := spotifyClient.GetActiveDevice(ctx)
+			if err != nil {
+				slog.Error("Failed to get active device", "error", err)
+			}
+			if activeDevice == nil || activeDevice.Name != cfg.SpotifyDeviceName {
+				if err := spotifyClient.TransferPlayback(ctx, cfg.SpotifyDeviceName); err != nil {
+					return fmt.Errorf("failed to transfer playback: %w", err)
+				}
+			}
+
 			// Check if query is a URL or URI
 			uriType, id := parseSpotifyID(trackID)
 

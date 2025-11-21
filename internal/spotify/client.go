@@ -130,6 +130,21 @@ func New(ctx context.Context, cfg *config.Config) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) GetActiveDevice(ctx context.Context) (*spotify.PlayerDevice, error) {
+	devices, err := c.client.PlayerDevices(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting devices: %w", err)
+	}
+
+	for _, device := range devices {
+		if device.Active {
+			return &device, nil
+		}
+	}
+
+	return nil, nil
+}
+
 func (c *Client) TransferPlayback(ctx context.Context, deviceName string) error {
 	devices, err := c.client.PlayerDevices(ctx)
 	if err != nil {
