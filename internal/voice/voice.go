@@ -62,9 +62,11 @@ func (m *Manager) Join(guildID, channelID string) error {
 
 	m.vc = vc
 
-	for _, fn := range m.onJoin {
-		fn()
-	}
+	go func() {
+		for _, fn := range m.onJoin {
+			fn()
+		}
+	}()
 
 	return nil
 }
